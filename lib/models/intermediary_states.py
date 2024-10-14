@@ -1,0 +1,4 @@
+INTERMEDIARY_STATES = [
+    "CAPTURE_WAIT_LW",
+    "FALL",
+    "LANDING"]
