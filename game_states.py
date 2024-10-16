@@ -6,7 +6,6 @@ import pyarrow as pa
 from lib.helpers.matchup_key import MatchupKey
 from lib.helpers.normalizers import _normalize_position
 from lib.models.action_states import ACTION_STATES
-from lib.models.characters_by_id import CHARACTERS_BY_ID
 from lib.models.intermediary_states import INTERMEDIARY_STATES
 
 @dataclass
@@ -40,83 +39,60 @@ class GameState:
     p2_shield_strength: Optional[float]
     p2_stocks: int
 
-
 @dataclass
 class ActionSequence:
     initial_state: int
     intermediary_states: List[int]
     final_action: int
 
-ACTION_STATE_COUNT = len(ACTION_STATES)
-
-def _get_matchup_key(game) -> MatchupKey:
-    active_ports = list(filter(lambda x: x, game.start.players))
-    p1_char = CHARACTERS_BY_ID[active_ports[0].character]
-    p2_char = CHARACTERS_BY_ID[active_ports[1].character]
-    return MatchupKey(p1_char, p2_char)
-
-def _frame_to_game_state(frame, game_start, index: int, is_p1_perspective: bool) -> GameState:
-    p1_data = frame.ports[0].leader
-    p2_data = frame.ports[1].leader
+# takes a single frame of the game, and turns it into a flattened, normalized array, to be run through nearest neighbor search
+def _frame_to_vector(game, index: int, is_p1_perspective: bool) -> np.ndarray:
+    ACTION_STATE_COUNT = len(ACTION_STATES)
+    p1_data = game.frames.ports[0].leader
+    p2_data = game.frames.ports[1].leader
+    stage_id=_to_int(game.start.stage)
 
     p1_pre = p1_data.pre
     p1_post = p1_data.post
     p2_pre = p2_data.pre
     p2_post = p2_data.post
 
-    return GameState(
-        frame_index=_to_int(index),
-        stage_id=_to_int(game_start.stage),
-        
-        # Player 1 state
-        p1_position=(_to_float(p1_pre.position.x[index]), _to_float(p1_pre.position.y[index])),
-        p1_velocity=(_to_float(p1_post.position.x[index]) - _to_float(p1_pre.position.x[index]), _to_float(p1_post.position.y[index]) - _to_float(p1_pre.position.y[index])),
-        p1_damage=_to_float(p1_post.percent[index]),
-        p1_state=_to_int(p1_post.state[index]),
-        p1_direction=_to_float(p1_post.direction[index]),
-        p1_character=_to_int(game_start.players[0].character),
-        p1_inputs=(p1_pre.buttons[index]),
-        p1_jumps_remaining=_to_int(p1_post.jumps[index]),
-        p1_on_ground=_to_int(p1_post.airborne[index]),
-        p1_shield_strength=_to_float(p1_post.shield[index]),
-        p1_stocks=_to_int(p1_post.stocks[index]),
-        
-        # Player 2 state
-        p2_position=(_to_float(p2_pre.position.x[index]), _to_float(p2_pre.position.y[index])),
-        p2_velocity=(_to_float(p2_post.position.x[index]) - _to_float(p2_pre.position.x[index]), _to_float(p2_post.position.y[index]) - _to_float(p2_pre.position.y[index])),
-        p2_damage=_to_float(p2_post.percent[index]),
-        p2_state=_to_int(p2_post.state[index]),
-        p2_direction=_to_float(p2_post.direction[index]),
-        p2_character=_to_int(game_start.players[0].character),
-        p2_jumps_remaining=_to_int(p2_post.jumps[index]),
-        p2_on_ground=_to_int(p2_post.airborne[index]),
-        p2_shield_strength=_to_float(p2_post.shield[index]),
-        p2_stocks=_to_int(p2_post.stocks[index]),
-    )
+    p1_pos = _normalize_position((_to_float(p1_pre.position.x[index]), _to_float(p1_pre.position.y[index])), stage_id)
+    p2_pos = _normalize_position((_to_float(p2_pre.position.x[index]), _to_float(p2_pre.position.y[index])), stage_id)
+    p1_direction=_to_float(p1_post.direction[index])
+    p2_direction=_to_float(p2_post.direction[index])
 
-def _game_state_to_vector(state: GameState) -> np.ndarray:
-    p1_pos = _normalize_position(state.p1_position, state.stage_id)
-    p2_pos = _normalize_position(state.p2_position, state.stage_id)
+    frame_index=_to_int(index)
+
+    # to add
+    # p1_velocity=(_to_float(p1_post.position.x[index]) - _to_float(p1_pre.position.x[index]), _to_float(p1_post.position.y[index]) - _to_float(p1_pre.position.y[index])),
+    #     p1_inputs=(p1_pre.buttons[index]),
+    #     p1_jumps_remaining=_to_int(p1_post.jumps[index]),
+    #     p1_on_ground=_to_int(p1_post.airborne[index]),
+    #     p1_shield_strength=_to_float(p1_post.shield[index]),
+    #     p1_stocks=_to_int(p1_post.stocks[index]),
     
     vector_components = [
         *p1_pos,
         *p2_pos,
         *(p1_pos - p2_pos),
-        state.p1_damage / 999.0,
-        state.p2_damage / 999.0,
-        *_one_hot_encode(state.p1_state, num_actions=ACTION_STATE_COUNT),
-        *_one_hot_encode(state.p2_state, num_actions=ACTION_STATE_COUNT),
+        _to_float(p1_post.percent[index]) / 999.0,
+        _to_float(p2_post.percent[index]) / 999.0,
+        *_one_hot_encode(_to_int(p1_post.state[index]), num_actions=ACTION_STATE_COUNT),
+        *_one_hot_encode(_to_int(p2_post.state[index]), num_actions=ACTION_STATE_COUNT),
         # state.p1_inputs,
-        np.sin(state.p1_direction * np.pi),
-        np.cos(state.p1_direction * np.pi),
-        np.sin(state.p2_direction * np.pi),
-        np.cos(state.p2_direction * np.pi)
+        np.sin(p1_direction * np.pi),
+        np.cos(p1_direction * np.pi),
+        np.sin(p2_direction * np.pi),
+        np.cos(p2_direction * np.pi)
         # Add more relevant features as needed
     ]
 
     return np.asarray(vector_components, dtype="object").flatten()
 
-
+# some frames of melee (jumpsquat, grab pull, landing lag)
+# are not a choice that the player has made, so we will ignore them until
+# we find an action from a new button that the player has pressed
 def _get_next_significant_action(game, start_index: int, is_p1_perspective: bool) -> ActionSequence:
 
     initial_state = game.frames.ports[0].leader.post.state[start_index]
@@ -132,6 +108,28 @@ def _get_next_significant_action(game, start_index: int, is_p1_perspective: bool
     # If we reach the end without finding a significant action
     return ActionSequence(initial_state, intermediary_states, "END_OF_REPLAY")
 
+def _compress_states(states: List[Tuple[np.ndarray, ActionSequence]]) -> List[Tuple[np.ndarray, ActionSequence]]:
+    compressed_states = []
+    current_action = None
+    action_states = []
+
+    for state_vector, action_sequence in states:
+        if action_sequence.final_action != current_action:
+            if current_action is not None:
+                avg_state_vector = np.mean([s for s, _ in action_states], axis=0)
+                compressed_states.append((avg_state_vector, action_states[0][1]))
+            current_action = action_sequence.final_action
+            action_states = []
+        action_states.append((state_vector, action_sequence))
+
+    if action_states:
+        avg_state_vector = np.mean([s for s, _ in action_states], axis=0)
+        compressed_states.append((avg_state_vector, action_states[0][1]))
+
+    return compressed_states
+
+
+# helper functions for encoding
 def flatten_and_convert_vector(vector: Any) -> List[float]:
     """
     Recursively flatten and convert a potentially nested structure into a list of floats.
@@ -162,8 +160,6 @@ def print_action_sequence(sequence: ActionSequence) -> str:
 
     return "->".join(action_list)
 
-
-# helper functions for encoding
 def _process_inputs(pre_state) -> Dict[str, any]:
     """Process raw inputs into a standardized format"""
     return {
@@ -174,22 +170,6 @@ def _process_inputs(pre_state) -> Dict[str, any]:
         'buttons': pre_state.buttons.physical.pressed()
     }
     
-def _is_grounded(state) -> bool:
-    """Determine if a player is on the ground based on their action state"""
-    ground_states = {
-        # Add all relevant ground action states
-        'STANDING': True,
-        'WALK_SLOW': True,
-        'WALK_MIDDLE': True,
-        'WALK_FAST': True,
-        'DASH': True,
-        'RUN': True,
-        'CROUCH': True,
-        'LANDING': True,
-        # Add more as needed...
-    }
-    return ground_states.get(str(state), False)
-
 def _one_hot_encode(value: int, num_actions: int) -> np.ndarray:
     """
     Create a one-hot encoded vector for a given value.
