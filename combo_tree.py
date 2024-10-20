@@ -5,7 +5,7 @@ from study import study
 
 def main():
     # cProfile.run('study()')
-    # study()
+    study()
     predict()
 
 if __name__ == "__main__":

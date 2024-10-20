@@ -32,17 +32,30 @@ class ParallelTransitionStateIndexer:
 
     def build_indices(self, replay_files: List[str], n_trees: int = 10):
         all_results = {}
+
+        print("replay_files")
+        print(replay_files)
         
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = {executor.submit(self.process_and_update, file): file for file in replay_files}
         
-        with concurrent.futures.ProcessPoolExecutor() as executor:
-            results = list(tqdm(executor.map(self.process_and_update, replay_files), total=len(replay_files), desc="Processing replays"))
-        
-        for result in results:
-            if result:
-                for matchup, states in result.items():
-                    if matchup not in all_results:
-                        all_results[matchup] = []
-                    all_results[matchup].extend(states)
+            print("futures")
+            print(futures)
+            with tqdm(total=len(futures), desc="Processing replays") as pbar:
+                
+                for future in concurrent.futures.as_completed(futures):
+                    
+                    file = futures[future]
+                    try:
+                        result = future.result()
+                        for matchup, states in result.items():
+                            if matchup not in all_results:
+                                all_results[matchup] = []
+                            all_results[matchup].extend(states)
+                    except Exception as exc:
+                        print(f'{file} generated an exception: {exc}')
+                    finally:
+                        pbar.update(1)
 
         self._update_indices(all_results)
 
@@ -53,13 +66,15 @@ class ParallelTransitionStateIndexer:
 
     # input:   a replay file
     # output:  a dictionary of the replays Character Matchup (fox vs. marth) -> all the frames of the replay as normalized vectors
-    def process_replay(self, replay_file: Path) -> Dict[MatchupKey, List[Tuple[np.ndarray, str]]]:
+    def process_replay(self, replay_file) -> Dict[MatchupKey, List[Tuple[np.ndarray, str]]]:
         try:
-            cache_file = os.path.join(self.cache_dir, f"{os.path.basename(str(replay_file))}.pickle")
+            # cache_file = os.path.join(self.cache_dir, f"{os.path.basename(str(replay_file))}.pickle")
         
-            if os.path.exists(cache_file):
-                with open(cache_file, 'rb') as f:
-                    return pickle.load(f)
+            # if os.path.exists(cache_file):
+            #     print("game")
+            #     print(cache_file)
+            #     with open(cache_file, 'rb') as f:
+            #         return pickle.load(f)
 
             game = read_slippi(str(replay_file))
 
@@ -74,9 +89,10 @@ class ParallelTransitionStateIndexer:
                 reversed_matchup = matchup.reversed
                 results[reversed_matchup] = self._process_replay_perspective(game, is_p1_perspective=False)
 
-            with open(cache_file, 'wb') as f:
-                pickle.dump(results, f)
+            # with open(cache_file, 'wb') as f:
+            #     pickle.dump(results, f)
 
+            print(f"SUCCESSFULLY processed slippi file: {replay_file}")
             return results
         
         except Exception as e:
@@ -100,6 +116,7 @@ class ParallelTransitionStateIndexer:
 
 
     def _update_indices(self, results: Dict[MatchupKey, List[Tuple[np.ndarray, ActionSequence]]]):
+        print("Beginning index creation")
         for matchup, states in results.items():
             compressed_states = _compress_states(states)
             self._process_matchup_states(matchup, compressed_states)
@@ -130,7 +147,8 @@ class ParallelTransitionStateIndexer:
     
 def study():
     start_time = time.time()
-    base_path = Path("C:\\Users\\Robert\\CodingProjects\\combo-tree\\lib\\test\\test replays")
+    base_path = Path("C:\\Users\\rober\\Coding Projects\\combo-tree\\lib\\test\\test replays")
+    
     matcher = ParallelTransitionStateIndexer(base_path)
 
     replay_files = list(base_path.glob("*.slp"))

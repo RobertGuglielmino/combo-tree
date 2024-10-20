@@ -57,6 +57,7 @@ def _frame_to_vector(game, index: int, is_p1_perspective: bool) -> np.ndarray:
     p2_pre = p2_data.pre
     p2_post = p2_data.post
 
+    # normalize position is biggest bottleneck
     p1_pos = _normalize_position((_to_float(p1_pre.position.x[index]), _to_float(p1_pre.position.y[index])), stage_id)
     p2_pos = _normalize_position((_to_float(p2_pre.position.x[index]), _to_float(p2_pre.position.y[index])), stage_id)
     p1_direction=_to_float(p1_post.direction[index])

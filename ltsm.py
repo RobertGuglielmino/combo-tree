@@ -1,184 +1,82 @@
 import numpy as np
-import torch
-import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
-from sklearn.preprocessing import StandardScaler
-import pytorch_lightning as pl
+import tensorflow as tf
+from sklearn.neighbors import NearestNeighbors
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense
 
-class GameStateVector:
-    def __init__(self):
-        # Constants for categorical encodings
-        self.ACTION_STATES = {
-            'STANDING': 0,
-            'DASHING': 1,
-            'RUNNING': 2,
-            'JUMPING': 3,
-            'FALLING': 4,
-            'ATTACKING': 5,
-            # ... add all relevant action states
-        }
+class SmashBrosHybridAnalyzer:
+    def __init__(self, n_neighbors=5, rnn_units=64):
+        self.n_neighbors = n_neighbors
+        self.rnn_units = rnn_units
+        self.nn_model = NearestNeighbors(n_neighbors=n_neighbors)
+        self.rnn_model = self._build_rnn_model()
+        self.replay_database = []
         
-        self.MOVES = {
-            'NEUTRAL_B': 0,
-            'SIDE_B': 1,
-            'UP_B': 2,
-            'DOWN_B': 3,
-            'NAIR': 4,
-            'FAIR': 5,
-            # ... add all possible moves
-        }
-        
-        self.scaler = StandardScaler()
-        
-    def create_state_vector(self, frame_data):
-        """Convert a single frame of Slippi data into a normalized vector"""
-        
-        # 1. Position and Motion (continuous values)
-        position_vector = [
-            frame_data.player.x,
-            frame_data.player.y,
-            frame_data.opponent.x,
-            frame_data.opponent.y,
-            frame_data.player.x_velocity,
-            frame_data.player.y_velocity,
-            frame_data.opponent.x_velocity,
-            frame_data.opponent.y_velocity
-        ]
-        
-        # 2. Damage and Stocks (continuous values)
-        damage_vector = [
-            frame_data.player.percent,
-            frame_data.opponent.percent,
-            frame_data.player.stocks,
-            frame_data.opponent.stocks
-        ]
-        
-        # 3. Action States (one-hot encoded)
-        player_action = np.zeros(len(self.ACTION_STATES))
-        player_action[self.ACTION_STATES[frame_data.player.action_state]] = 1
-        
-        opponent_action = np.zeros(len(self.ACTION_STATES))
-        opponent_action[self.ACTION_STATES[frame_data.opponent.action_state]] = 1
-        
-        # 4. Controller Inputs (continuous values)
-        input_vector = [
-            frame_data.player.controller.main_stick_x,
-            frame_data.player.controller.main_stick_y,
-            frame_data.player.controller.c_stick_x,
-            frame_data.player.controller.c_stick_y,
-            frame_data.player.controller.l_trigger,
-            frame_data.player.controller.r_trigger
-        ]
-        
-        # 5. Stage Info (normalized coordinates)
-        stage_vector = [
-            frame_data.stage.platform1_x,
-            frame_data.stage.platform1_y,
-            frame_data.stage.platform2_x,
-            frame_data.stage.platform2_y,
-            frame_data.stage.blast_zone_right,
-            frame_data.stage.blast_zone_left,
-            frame_data.stage.blast_zone_top,
-            frame_data.stage.blast_zone_bottom
-        ]
-        
-        # Combine all vectors
-        complete_vector = np.concatenate([
-            position_vector,
-            damage_vector,
-            player_action,
-            opponent_action,
-            input_vector,
-            stage_vector
+    def _build_rnn_model(self):
+        model = Sequential([
+            LSTM(self.rnn_units, return_sequences=True, input_shape=(None, self._get_feature_dim())),
+            LSTM(self.rnn_units),
+            Dense(self._get_action_dim(), activation='softmax')
         ])
-        
-        return complete_vector
+        model.compile(optimizer='adam', loss='categorical_crossentropy')
+        return model
     
-    def create_sequence_vector(self, replay_data, sequence_length=60):
-        """Create a sequence of state vectors from multiple frames"""
-        sequence = []
-        
-        for frame in range(sequence_length):
-            if frame < len(replay_data):
-                frame_vector = self.create_state_vector(replay_data[frame])
-            else:
-                # Pad with zeros if sequence is shorter than desired length
-                frame_vector = np.zeros(self.get_vector_size())
-            sequence.append(frame_vector)
-            
-        return np.array(sequence)
+    def _get_feature_dim(self):
+        # Return the dimension of your feature vector
+        return 100  # Placeholder value, adjust based on your actual feature dimension
+    
+    def _get_action_dim(self):
+        # Return the number of possible actions
+        return 20  # Placeholder value, adjust based on the actual number of actions in Smash Bros Melee
 
-class MeleeDataset(Dataset):
-    def __init__(self, replay_files, sequence_length=60):
-        self.vectorizer = GameStateVector()
-        self.sequence_length = sequence_length
-        self.sequences = []
-        self.labels = []
+    def add_replay_to_database(self, replay_vector):
+        self.replay_database.append(replay_vector)
         
-        for replay in replay_files:
-            self.process_replay(replay)
+    def train_models(self):
+        # Train nearest neighbor model
+        self.nn_model.fit(self.replay_database)
+        
+        # Prepare data for RNN training
+        X, y = self._prepare_rnn_data()
+        self.rnn_model.fit(X, y, epochs=10, batch_size=32)
     
-    def process_replay(self, replay):
-        # Process each decision point in the replay
-        for i in range(len(replay) - self.sequence_length):
-            sequence = self.vectorizer.create_sequence_vector(
-                replay[i:i+self.sequence_length]
-            )
-            next_action = replay[i+self.sequence_length].player.action
-            
-            self.sequences.append(sequence)
-            self.labels.append(self.vectorizer.MOVES[next_action])
-    
-    def __len__(self):
-        return len(self.sequences)
-    
-    def __getitem__(self, idx):
-        return self.sequences[idx], self.labels[idx]
+    def _prepare_rnn_data(self):
+        # Implement logic to prepare sequential data for RNN training
+        # This will depend on how your replay data is structured
+        pass
 
-class MeleeLSTM(pl.LightningModule):
-    def __init__(self, input_size, hidden_size, num_actions):
-        super().__init__()
-        self.lstm = nn.LSTM(
-            input_size=input_size,
-            hidden_size=hidden_size,
-            num_layers=2,
-            batch_first=True,
-            dropout=0.2
-        )
-        self.dropout = nn.Dropout(0.2)
-        self.fc = nn.Linear(hidden_size, num_actions)
+    def analyze_game_state(self, current_state_vector):
+        # Find nearest neighbors
+        distances, indices = self.nn_model.kneighbors([current_state_vector])
+        
+        # Get RNN prediction
+        rnn_input = np.array([current_state_vector])  # Adjust shape as needed
+        rnn_prediction = self.rnn_model.predict(rnn_input)
+        
+        # Combine NN and RNN results
+        combined_result = self._combine_results(distances[0], indices[0], rnn_prediction[0])
+        
+        return combined_result
     
-    def forward(self, x):
-        lstm_out, _ = self.lstm(x)
-        out = self.dropout(lstm_out[:, -1, :])  # Take only last sequence output
-        return self.fc(out)
-    
-    def training_step(self, batch, batch_idx):
-        x, y = batch
-        y_hat = self(x)
-        loss = nn.CrossEntropyLoss()(y_hat, y)
-        self.log('train_loss', loss)
-        return loss
-    
-    def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=0.001)
+    def _combine_results(self, distances, indices, rnn_prediction):
+        # Implement logic to combine nearest neighbor results with RNN prediction
+        # This could involve weighting the results, using a voting system, etc.
+        pass
 
-# Example usage
-def train_model(replay_files):
-    # Create dataset
-    dataset = MeleeDataset(replay_files)
-    train_loader = DataLoader(dataset, batch_size=32, shuffle=True)
-    
-    # Initialize model
-    input_size = dataset.vectorizer.get_vector_size()
-    model = MeleeLSTM(
-        input_size=input_size,
-        hidden_size=256,
-        num_actions=len(dataset.vectorizer.MOVES)
-    )
-    
-    # Train model
-    trainer = pl.Trainer(max_epochs=100)
-    trainer.fit(model, train_loader)
-    
-    return model
+    def suggest_next_action(self, game_state):
+        analysis = self.analyze_game_state(game_state)
+        # Implement logic to convert analysis into a suggested next action
+        pass
+
+# Usage example
+analyzer = SmashBrosHybridAnalyzer()
+
+# Add replay data to the database
+# analyzer.add_replay_to_database(replay_vector)
+
+# Train the models
+analyzer.train_models()
+
+# Analyze a game state and suggest next action
+current_game_state = np.random.rand(100)  # Replace with actual game state vector
+suggested_action = analyzer.suggest_next_action(current_game_state)
