@@ -1,9 +1,8 @@
 from dataclasses import dataclass
-from typing import Any, Dict, List, NamedTuple, Optional, Tuple
+from typing import Any, Dict, List,  Optional, Tuple
 import numpy as np
 import pyarrow as pa
 
-from lib.helpers.matchup_key import MatchupKey
 from lib.helpers.normalizers import _normalize_position
 from lib.models.action_states import ACTION_STATES
 from lib.models.intermediary_states import INTERMEDIARY_STATES
@@ -77,8 +76,8 @@ def _frame_to_vector(game, index: int, is_p1_perspective: bool) -> np.ndarray:
         *p1_pos,
         *p2_pos,
         *(p1_pos - p2_pos),
-        _to_float(p1_post.percent[index]) / 999.0,
-        _to_float(p2_post.percent[index]) / 999.0,
+        np.array([_to_float(p1_post.percent[index]) / 999.0])[0],
+        np.array([_to_float(p2_post.percent[index]) / 999.0])[0],
         *_one_hot_encode(_to_int(p1_post.state[index]), num_actions=ACTION_STATE_COUNT),
         *_one_hot_encode(_to_int(p2_post.state[index]), num_actions=ACTION_STATE_COUNT),
         # state.p1_inputs,
@@ -172,16 +171,6 @@ def _process_inputs(pre_state) -> Dict[str, any]:
     }
     
 def _one_hot_encode(value: int, num_actions: int) -> np.ndarray:
-    """
-    Create a one-hot encoded vector for a given value.
-    
-    Args:
-        value: Integer value to encode.
-        num_actions: Total number of possible classes.
-    
-    Returns:
-        Numpy array with one-hot encoding.
-    """
     encoding = np.zeros(num_actions)
     if 0 <= value < num_actions:
         encoding[value] = 1

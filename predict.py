@@ -43,8 +43,7 @@ class TransitionStatePredictor:
 
         return [(cache[idx], dist) for idx, dist in zip(indices, distances)]
     
-def predict():
-    base_path = Path("C:\\Users\\rober\\Coding Projects\\combo-tree\\lib\\test\\test replays")
+def predict(base_path):
     matcher = TransitionStatePredictor(base_path)
     matcher.load_indices()
     test_game = read_slippi('./Game_20220910T180650.slp')
