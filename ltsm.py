@@ -9,6 +9,7 @@ import time
 import numpy as np
 
 from lib.classes.rnn_model import SmashBrosHybridAnalyzer
+from lib.classes.replay_processor import ReplayProcessor
 from lib.models.action_states import ACTION_STATES
 
 # Example usage
@@ -18,16 +19,14 @@ def main():
 
 def study():
     start_time = time.time()
+    base_path = Path('C:/Users/Robert/CodingProjects/combo-tree')
+    test_path = Path('E:/SlippiDataSet')
+
     analyzer = SmashBrosHybridAnalyzer(feature_dim=802)
-    
-    # base_path = Path('C:/Users/Robert/CodingProjects/combo-tree')
-    base_path = Path('E:/SlippiDataSet')
-    replay_files = list(base_path.glob("*.slp"))
-    print(f"Found {len(replay_files)} replay files")
-    print(f"===============================")
+    replays = ReplayProcessor(base_path, test_path, chunk_size=5)
         
     # Process Data
-    analyzer.process_replays_chunked(replay_files, 5)
+    replays.process_replays_RNN_chunked()
     
     # Train models
     analyzer.train_models()

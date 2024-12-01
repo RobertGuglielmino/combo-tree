@@ -1,16 +1,14 @@
 import os
 from pathlib import Path
 import pickle
-import time
 from typing import Dict, List, Tuple
 from annoy import AnnoyIndex
-import concurrent
 import numpy as np
 
 from game_states import ActionSequence, _compress_states
+from lib.classes.replay_processor import ReplayProcessor
 from lib.helpers.matchup_key import MatchupKey
 from lib.helpers.process_replay import process_replay
-from lib.helpers.update_progress import update_progress
 
 
 class ParallelTransitionStateIndexer:
@@ -23,33 +21,16 @@ class ParallelTransitionStateIndexer:
         self.cache_dir = cache_dir
         os.makedirs(cache_dir, exist_ok=True)
 
-    def process_and_update(self, replay_file):
-        try:
-            result = process_replay(replay_file)
-            if result:
-                return result
-        except Exception as e:
-            print(f"Error processing replay file: {replay_file}: {e}")
-        return None
+        self.replays = ReplayProcessor()
+
 
     def build_indices(self, replay_files: List[str], n_trees: int = 10):
-        all_results = {}
-        total_files = len(replay_files)
-        start_time = time.time()
-        
-        print(f"Starting to process {total_files} replay files...")
 
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            # Process files with simple progress indicator
-            results = []
-            for i, result in enumerate(executor.map(self.process_and_update, replay_files)):
-                if i % 10 == 0 or i == total_files - 1:  # Update more frequently
-                    update_progress(i + 1, total_files, start_time)
-                results.append(result)
+        results = self.replays.process_replays_NNS(replay_files)
 
         print("Processing complete. Aggregating results...")
 
-        self._update_indices(all_results)
+        self._update_indices(results)
 
         for index in self.matchup_indices.values():
             index.build(n_trees)

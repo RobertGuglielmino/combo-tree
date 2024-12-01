@@ -1,6 +1,7 @@
 
 from typing import List, Tuple
 import numpy as np
+from lib.helpers.ensure_numpy import _ensure_numpy
 import torch
 
 
@@ -97,6 +98,7 @@ class StateTransitionPreprocessor:
                     
                     sequence_buffer = []
         
+        # TODO can combine these two
 
         # Process remaining buffer
         if sequence_buffer:
@@ -117,16 +119,10 @@ class StateTransitionPreprocessor:
         
         if not all_sequences:
             raise ValueError("No valid sequences found in data")
-        
-        
-        # Convert to PyTorch tensors
-        X_train = torch.from_numpy(np.array(all_sequences, dtype=np.float32)).float().to(self.device)
-        y_train = torch.from_numpy(np.array(all_targets, dtype=np.int64)).long().to(self.device)
-        durations = torch.from_numpy(np.array(all_durations, dtype=np.float32)).float().to(self.device)
             
-        return (X_train,
-                y_train,
-                durations)
+        return (_ensure_numpy(torch.from_numpy(np.array(all_sequences, dtype=np.float32)).float().to(self.device)),
+                _ensure_numpy(torch.from_numpy(np.array(all_targets, dtype=np.int64)).long().to(self.device)),
+                _ensure_numpy(torch.from_numpy(np.array(all_durations, dtype=np.float32)).float().to(self.device)))
     
     def _get_action_dim(self) -> int:
         return 20

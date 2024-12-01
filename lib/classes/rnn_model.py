@@ -10,7 +10,7 @@ import torch.optim as optim
 from lib.classes.console_logger import ConsoleProgress
 from lib.classes.state_transition_preprocessor import StateTransitionPreprocessor
 from lib.classes.transition_aware_ltsm import TransitionAwareLSTM
-from lib.helpers.process_replay import process_replays_in_chunks
+from lib.classes.replay_processor import ReplayProcessor
 
 
 class SmashBrosHybridAnalyzer:
@@ -21,12 +21,6 @@ class SmashBrosHybridAnalyzer:
         self.epochs = epochs
         self.batch_size = batch_size
         self.rnn_units = rnn_units
-
-        # Store preprocessed data instead of raw data
-        self.processed_X = np.empty((0, 5, feature_dim), dtype=np.float32)  # (samples, sequence_length, features)
-        self.processed_y = np.empty(0, dtype=np.int64)  # (samples,)
-        self.processed_durations = np.empty(0, dtype=np.float32)  # (samples,)
-
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         if torch.cuda.is_available():
@@ -44,7 +38,7 @@ class SmashBrosHybridAnalyzer:
         self.optimizer = optim.Adam(self.rnn_model.parameters())
         self.criterion = nn.CrossEntropyLoss()
         self.preprocessor = StateTransitionPreprocessor(feature_dim, self.device)
-
+        self.replays = ReplayProcessor(feature_dim=self.feature_dim)
         self.progress = ConsoleProgress()
 
 
@@ -98,38 +92,6 @@ class SmashBrosHybridAnalyzer:
             print(f"Error loading model: {e}")
             raise
 
-    def process_replays_chunked(self, replay_files, chunk_size):
-    # Process replays in chunks
-        for chunk_data in process_replays_in_chunks(replay_files, chunk_size=chunk_size):
-            try:
-                self.add_replays_batch(chunk_data)
-                
-            except Exception as e:
-                print(f"Error processing chunk: {e}")
-                continue
-            
-            finally:
-                del chunk_data
-                import gc
-                gc.collect()
-        
-        self.processed_X = self._ensure_numpy(self.processed_X)
-        self.processed_y = self._ensure_numpy(self.processed_y)
-        self.processed_durations = self._ensure_numpy(self.processed_durations)
-
-
-    def add_replays_batch(self, replay_vectors: List[np.ndarray]):
-        """Process and store data immediately in the correct format"""
-        X, y, durations = self.preprocessor.preprocess_data(replay_vectors)
-
-        X = self._ensure_numpy(X)
-        y = self._ensure_numpy(y)
-        durations = self._ensure_numpy(durations)
-        
-        # Extend our stored preprocessed data
-        self.processed_X = np.concatenate([self.processed_X, X], axis=0)
-        self.processed_y = np.concatenate([self.processed_y, y], axis=0)
-        self.processed_durations = np.concatenate([self.processed_durations, durations], axis=0)
         
     def train_models(self):
         chunk_size = 100  # Adjust based on your memory constraints
@@ -212,15 +174,6 @@ class SmashBrosHybridAnalyzer:
     
 
 
-
-    def _ensure_numpy(self, data):
-        """Ensure data is a numpy array on CPU"""
-        if torch.is_tensor(data):
-            return data.detach().cpu().numpy()
-        elif isinstance(data, np.ndarray):
-            return data
-        else:
-            return np.array(data)
 
     def set_epochs(self, epochs):
         self.epochs = epochs

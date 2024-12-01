@@ -45,10 +45,11 @@ class ActionSequence:
     final_action: int
 
 # takes a single frame of the game, and turns it into a flattened, normalized array, to be run through nearest neighbor search
-def _frame_to_vector(game, index: int, is_p1_perspective: bool) -> np.ndarray:
+def _frame_to_vector(game, index: int, port: int) -> np.ndarray:
+    villain_port = abs(port-1)
     ACTION_STATE_COUNT = len(ACTION_STATES)
-    p1_data = game.frames.ports[0].leader
-    p2_data = game.frames.ports[1].leader
+    p1_data = game.frames.ports[port].leader
+    p2_data = game.frames.ports[villain_port].leader
     stage_id=_to_int(game.start.stage)
 
     p1_pre = p1_data.pre
@@ -76,8 +77,8 @@ def _frame_to_vector(game, index: int, is_p1_perspective: bool) -> np.ndarray:
         *p1_pos,
         *p2_pos,
         *(p1_pos - p2_pos),
-        np.array([_to_float(p1_post.percent[index]) / 999.0])[0],
-        np.array([_to_float(p2_post.percent[index]) / 999.0])[0],
+        np.array([_to_float(p1_post.percent[index]) / 999.0])[port],
+        np.array([_to_float(p2_post.percent[index]) / 999.0])[port],
         *_one_hot_encode(_to_int(p1_post.state[index]), num_actions=ACTION_STATE_COUNT),
         *_one_hot_encode(_to_int(p2_post.state[index]), num_actions=ACTION_STATE_COUNT),
         # state.p1_inputs,
@@ -93,13 +94,14 @@ def _frame_to_vector(game, index: int, is_p1_perspective: bool) -> np.ndarray:
 # some frames of melee (jumpsquat, grab pull, landing lag)
 # are not a choice that the player has made, so we will ignore them until
 # we find an action from a new button that the player has pressed
-def _get_next_significant_action(game, start_index: int, is_p1_perspective: bool) -> ActionSequence:
+def _get_next_significant_action(game, start_index: int, port: int) -> ActionSequence:
+    villain_port = abs(port-1)
 
-    initial_state = game.frames.ports[0].leader.post.state[start_index]
+    initial_state = game.frames.ports[port].leader.post.state[start_index]
     intermediary_states = []
     
     for i in range(start_index + 1, game.metadata["lastFrame"]):
-        current_state = game.frames.ports[0].leader.post.state[i]
+        current_state = game.frames.ports[port].leader.post.state[villain_port]
         if ACTION_STATES[current_state.as_py()] in INTERMEDIARY_STATES:
             intermediary_states.append(current_state)
         else:
