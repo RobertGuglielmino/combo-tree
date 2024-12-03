@@ -4,6 +4,7 @@ import concurrent
 import numpy as np
 import psutil
 from game_states import _frame_to_vector, _get_next_significant_action
+from lib.classes.state_transition_preprocessor import StateTransitionPreprocessor
 from lib.helpers.matchup_key import MatchupKey, _get_matchup_key
 from peppi_py import read_slippi
 
@@ -16,9 +17,10 @@ class ReplayProcessor:
         self.chunk_size = chunk_size
         self.feature_dim=feature_dim
 
-        print(f"Found {len(self.replays)} replay files")
+        print(f"Found {len(self.replays)} replay files in path {replay_path}")
         print(f"===============================")
         
+        self.preprocessor = StateTransitionPreprocessor(feature_dim, 'cuda')
         self.processed_X = np.empty((0, 5, self.feature_dim), dtype=np.float32)  # (samples, sequence_length, features)
         self.processed_y = np.empty(0, dtype=np.int64)  # (samples,)
         self.processed_durations = np.empty(0, dtype=np.float32)  # (samples,)
@@ -36,15 +38,14 @@ class ReplayProcessor:
             for i, result in enumerate(executor.map(self._single_replay_to_normalized_vector, replay_files)):
                 if i % 10 == 0 or i == num_files - 1:  # Update more frequently
                     update_progress(i + 1, num_files, start_time)
-                results.append(result)
+                results.append(result[0])
 
         return results
 
-    # TODO _process_replay_perspective_with_sequence now returns Tuple(List, List),
-    # remove boolean from params somehow
+    # TODO _vector_sequence_from_perspective now returns Tuple(List, List),
 
     # output:  a dictionary of the replays Character Matchup (fox vs. marth) -> all the frames of the replay as normalized vectors
-    def _single_replay_to_normalized_vector(self, replay_file) -> Dict[MatchupKey, List[Tuple[np.ndarray, str]]]:
+    def _single_replay_to_normalized_vector(self, replay_file) -> Dict[MatchupKey, Tuple[List[np.ndarray], List[str]]]:
             try:
                 # cache_file = os.path.join(self.cache_dir, f"{os.path.basename(str(replay_file))}.pickle")
             
@@ -87,6 +88,8 @@ class ReplayProcessor:
                 del chunk_data
                 import gc
                 gc.collect()
+
+        return self.processed_X, self.processed_y, self.processed_durations
 
                 
     def add_replays_batch(self, replay_vectors: List[np.ndarray]):
