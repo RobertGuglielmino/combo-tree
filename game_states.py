@@ -3,7 +3,8 @@ from typing import Any, Dict, List,  Optional, Tuple
 import numpy as np
 import pyarrow as pa
 
-from lib.helpers.normalizers import _normalize_position
+from lib.classes.file_io.replay import Replay
+from lib.helpers.normalizers.character_normalizers import _normalize_position
 from lib.models.action_states import ACTION_STATES
 from lib.models.intermediary_states import INTERMEDIARY_STATES
 
@@ -45,23 +46,16 @@ class ActionSequence:
     final_action: int
 
 # takes a single frame of the game, and turns it into a flattened, normalized array, to be run through nearest neighbor search
-def _frame_to_vector(game, index: int, port: int) -> np.ndarray:
+def _frame_to_vector(game: Replay, index: int, port: int) -> np.ndarray:
     villain_port = abs(port-1)
     ACTION_STATE_COUNT = len(ACTION_STATES)
-    p1_data = game.frames.ports[port].leader
-    p2_data = game.frames.ports[villain_port].leader
-    stage_id=_to_int(game.start.stage)
-
-    p1_pre = p1_data.pre
-    p1_post = p1_data.post
-    p2_pre = p2_data.pre
-    p2_post = p2_data.post
+    stage_id=game.stage()
 
     # normalize position is biggest bottleneck
-    p1_pos = _normalize_position((_to_float(p1_pre.position.x[index]), _to_float(p1_pre.position.y[index])), stage_id)
-    p2_pos = _normalize_position((_to_float(p2_pre.position.x[index]), _to_float(p2_pre.position.y[index])), stage_id)
-    p1_direction=_to_float(p1_post.direction[index])
-    p2_direction=_to_float(p2_post.direction[index])
+    p1_pos = _normalize_position((_to_float(game.hero_x_position(index)), _to_float(game.hero_y_position(index))), stage_id)
+    p2_pos = _normalize_position((_to_float(game.villain_x_position(index)), _to_float(game.villain_y_position(index))), stage_id)
+    p1_direction=_to_float(game.hero_direction(index))
+    p2_direction=_to_float(game.villain_direction(index))
 
     frame_index=_to_int(index)
 
@@ -72,15 +66,15 @@ def _frame_to_vector(game, index: int, port: int) -> np.ndarray:
     #     p1_on_ground=_to_int(p1_post.airborne[index]),
     #     p1_shield_strength=_to_float(p1_post.shield[index]),
     #     p1_stocks=_to_int(p1_post.stocks[index]),
-    
+
     vector_components = [
         *p1_pos,
         *p2_pos,
         *(p1_pos - p2_pos),
-        np.array([_to_float(p1_post.percent[index]) / 999.0])[port],
-        np.array([_to_float(p2_post.percent[index]) / 999.0])[port],
-        *_one_hot_encode(_to_int(p1_post.state[index]), num_actions=ACTION_STATE_COUNT),
-        *_one_hot_encode(_to_int(p2_post.state[index]), num_actions=ACTION_STATE_COUNT),
+        np.array([_to_float(game.hero_damage(index)) / 999.0])[port],
+        np.array([_to_float(game.villain_damage(index)) / 999.0])[port],
+        *_one_hot_encode(game.hero_state_index(index), num_actions=ACTION_STATE_COUNT),
+        *_one_hot_encode(game.villain_state_index(index), num_actions=ACTION_STATE_COUNT),
         # state.p1_inputs,
         np.sin(p1_direction * np.pi),
         np.cos(p1_direction * np.pi),
@@ -94,15 +88,16 @@ def _frame_to_vector(game, index: int, port: int) -> np.ndarray:
 # some frames of melee (jumpsquat, grab pull, landing lag)
 # are not a choice that the player has made, so we will ignore them until
 # we find an action from a new button that the player has pressed
-def _get_next_significant_action(game, start_index: int, port: int) -> ActionSequence:
+def _get_next_significant_action(game: Replay, start_index: int, port: int) -> ActionSequence:
     villain_port = abs(port-1)
 
-    initial_state = game.frames.ports[port].leader.post.state[start_index]
+    initial_state = game.hero_state_index(start_index)
     intermediary_states = []
+
     
-    for i in range(start_index + 1, game.metadata["lastFrame"]):
-        current_state = game.frames.ports[port].leader.post.state[villain_port]
-        if ACTION_STATES[current_state.as_py()] in INTERMEDIARY_STATES:
+    for i in range(start_index + 1, game.game_length()):
+        current_state = game.hero_state_index(i)
+        if ACTION_STATES[current_state] in INTERMEDIARY_STATES:
             intermediary_states.append(current_state)
         else:
             return ActionSequence(initial_state, intermediary_states, current_state)

@@ -5,7 +5,7 @@ import pickle
 
 import numpy as np
 
-from lib.classes.console_logger import ConsoleProgress
+from lib.classes.file_io.console_logger import ConsoleProgress
 
 
 class DataManager:

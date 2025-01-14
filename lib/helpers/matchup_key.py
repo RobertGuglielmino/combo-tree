@@ -1,6 +1,6 @@
 from typing import NamedTuple
 
-from lib.models.characters_by_id import CHARACTERS_BY_ID
+from lib.models.characters import Character
 
 class MatchupKey(NamedTuple):
     p1_char: str  # Character enum value
@@ -20,6 +20,6 @@ class MatchupKey(NamedTuple):
 
 def _get_matchup_key(game) -> MatchupKey:
     active_ports = list(filter(lambda x: x, game.start.players))
-    p1_char = CHARACTERS_BY_ID[active_ports[0].character]
-    p2_char = CHARACTERS_BY_ID[active_ports[1].character]
+    p1_char = Character[active_ports[0].character]
+    p2_char = Character[active_ports[1].character]
     return MatchupKey(p1_char, p2_char)

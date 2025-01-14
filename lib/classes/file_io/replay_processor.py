@@ -1,14 +1,19 @@
+import json
+from pathlib import Path
 import time
 from typing import Dict, List, Tuple
 import concurrent
 import numpy as np
 import psutil
 from game_states import _frame_to_vector, _get_next_significant_action
-from lib.classes.state_transition_preprocessor import StateTransitionPreprocessor
+from lib.classes.file_io.replay import Replay
+from lib.classes.nns.state_transition_preprocessor import StateTransitionPreprocessor
 from lib.helpers.matchup_key import MatchupKey, _get_matchup_key
 from peppi_py import read_slippi
 
-from lib.helpers.update_progress import update_progress
+from lib.models.characters import Character
+
+from lib.classes.file_io.console_logger import ConsoleProgress
 
 class ReplayProcessor:
     def __init__(self, replay_path, test_replay_path="/", chunk_size=5, feature_dim=100):
@@ -17,9 +22,14 @@ class ReplayProcessor:
         self.chunk_size = chunk_size
         self.feature_dim=feature_dim
 
+        
+        with open('lib\\test\\test_chaingrab_replays\\chaingrabs_data.json', 'r') as file:
+            self.chaingrabs_datafile = json.load(file)
+
         print(f"Found {len(self.replays)} replay files in path {replay_path}")
         print(f"===============================")
         
+        self.logger = ConsoleProgress()
         self.preprocessor = StateTransitionPreprocessor(feature_dim, 'cuda')
         self.processed_X = np.empty((0, 5, self.feature_dim), dtype=np.float32)  # (samples, sequence_length, features)
         self.processed_y = np.empty(0, dtype=np.int64)  # (samples,)
@@ -37,8 +47,10 @@ class ReplayProcessor:
             results = []
             for i, result in enumerate(executor.map(self._single_replay_to_normalized_vector, replay_files)):
                 if i % 10 == 0 or i == num_files - 1:  # Update more frequently
-                    update_progress(i + 1, num_files, start_time)
+                    self.logger.update_progress(i + 1, num_files, start_time)
                 results.append(result[0])
+                
+        print("Processing complete. Aggregating results...")
 
         return results
 
@@ -122,27 +134,25 @@ class ReplayProcessor:
             yield chunk_data
             del chunk_data
 
-    def _vector_sequence_from_perspective(self, replay_file_path, character=None, mirror=False) -> Tuple[List[np.ndarray], List[str]]:
-        game = read_slippi(str(replay_file_path))
+    def _vector_sequence_from_perspective(self, replay_file_path: Path, character=None, mirror=False) -> Tuple[List[np.ndarray], List[str]]:
+        game = Replay(read_slippi(str(replay_file_path)), Character.MARTH)
         print ("\033[A                             \033[A")
 
-        port = 0
+        port = game.hero_port
         processed_states = []
         action_sequences = []
-        frame = 0
 
-        if not character:
-            if game.start.players[1].character == character:
-                port = 1
+        chaingrabs_in_replay = [cg for cg in self.chaingrabs_datafile if cg["file"] == str(replay_file_path)][0]["chaingrabs"]
 
-        #if not mirror
-            
-        while frame < game.metadata["lastFrame"]:
-            state_vector = _frame_to_vector(game, frame, port)
-            action_sequence = _get_next_significant_action(game, frame, port)
-            frame += len(action_sequence.intermediary_states) + 1
+        for cg in chaingrabs_in_replay:
+            print(cg)
+            frame = cg["start_frame"]
+            while frame < cg["end_frame"]:
+                state_vector = _frame_to_vector(game, frame, port)
+                action_sequence = _get_next_significant_action(game, frame, port)
+                frame += len(action_sequence.intermediary_states) + 1
 
-            processed_states.append(state_vector)
-            action_sequences.append(action_sequence)
+                processed_states.append(state_vector)
+                action_sequences.append(action_sequence)
 
         return processed_states, action_sequences

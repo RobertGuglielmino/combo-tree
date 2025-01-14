@@ -1,4 +1,5 @@
 
+from datetime import timedelta
 import sys
 import time
 import psutil
@@ -74,7 +75,7 @@ class ConsoleProgress:
             f"🔄 Epoch: {curr_epoch+1}/{self.epochs}",
             f"📈 Progress: [{progress:6.2f}%] [{curr_count+batch_size_actual:,}/{self.total_samples//self.batch_size:,}]",
             f"⏱️  Time: {elapsed:.1f}s elapsed, {eta:.1f}s remaining",
-            f"💻 RAM: {ram:.1f}MB{gpu_mem} | Loss: {loss:.4f} | Avg Loss: {self.epoch_loss/self.n_batches:.4f} | Batch: {self.n_batches}/{self.total_samples}"
+            f"💻 RAM: {ram:.1f}MB{gpu_mem} | Loss: {loss:.4f} | Avg Loss: {self.epoch_loss/self.n_batches:.4f} | Batch: {self.n_batches}/{self.total_samples//self.batch_size}"
         ]
         
         print('\n'.join(status))
@@ -89,7 +90,27 @@ class ConsoleProgress:
             self.last_update = current_time
             return True
         return False 
-            
+    
+    
+    def format_time(self, seconds):
+        return str(timedelta(seconds=int(seconds)))
+
+    def update_progress(self, current, total, start_time):
+        elapsed_time = time.time() - start_time
+        if current > 0:
+            estimated_total_time = elapsed_time * total / current
+            estimated_remaining = estimated_total_time - elapsed_time
+            eta = self.format_time(estimated_remaining)
+        else:
+            eta = "calculating..."
+
+        # Clear the current line and move cursor to beginning
+        sys.stdout.write('\033[K')
+        progress = f"\rProcessing: {current}/{total} files ({(current/total*100):.1f}%) | "
+        progress += f"Elapsed: {self.format_time(elapsed_time)} | ETA: {eta}"
+        sys.stdout.write(progress)
+        sys.stdout.flush()
+                
 
     # FACTORY FUNCTIONS
 

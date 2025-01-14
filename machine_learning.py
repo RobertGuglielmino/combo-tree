@@ -2,8 +2,8 @@ from pathlib import Path
 import time
 import numpy as np
 
-from lib.classes.smash_bros_analyzer import SmashBrosAnalyzer
-from lib.classes.replay_processor import ReplayProcessor
+from lib.classes.ai_ml.smash_bros_analyzer import SmashBrosAnalyzer
+from lib.classes.file_io.replay_processor import ReplayProcessor
 from lib.models.action_states import ACTION_STATES
 
 # Example usage
@@ -17,7 +17,7 @@ def study():
     test_path = Path('E:/SlippiDataSet')
     base_path = Path('E:/SlippiDataSet')
 
-    analyzer = SmashBrosAnalyzer(feature_dim=802)
+    analyzer = SmashBrosAnalyzer(feature_dim=100)
     replays = ReplayProcessor(base_path, test_path, chunk_size=5)
         
     # Process Data

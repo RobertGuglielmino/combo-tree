@@ -6,9 +6,8 @@ from annoy import AnnoyIndex
 import numpy as np
 
 from game_states import ActionSequence, _compress_states
-from lib.classes.replay_processor import ReplayProcessor
+from lib.classes.file_io.replay_processor import ReplayProcessor
 from lib.helpers.matchup_key import MatchupKey
-from lib.helpers.process_replay import process_replay
 
 
 class ParallelTransitionStateIndexer:
@@ -27,9 +26,6 @@ class ParallelTransitionStateIndexer:
     def build_indices(self, replay_files: List[str], n_trees: int = 10):
 
         results = self.replays.process_replays_NNS(replay_files)
-
-        print("Processing complete. Aggregating results...")
-
         self._update_indices(results)
 
         for index in self.matchup_indices.values():
