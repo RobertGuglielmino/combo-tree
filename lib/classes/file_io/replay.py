@@ -57,22 +57,22 @@ class Replay:
         return ACTION_STATES[self.game.frames.ports[self.villain_port].leader.pre.state[frame].as_py()]
 
     def hero_x_position(self, frame):
-        return self.game.frames.ports[self.hero_port].leader.pre.position.x[frame].as_py()
+        return float(self.game.frames.ports[self.hero_port].leader.pre.position.x[frame].as_py())
     
     def hero_y_position(self, frame):
-        return self.game.frames.ports[self.hero_port].leader.pre.position.y[frame].as_py()
+        return float(self.game.frames.ports[self.hero_port].leader.pre.position.y[frame].as_py())
       
     def hero_direction(self, frame):
-        return self.game.frames.ports[self.hero_port].leader.post.direction[frame].as_py()
+        return float(self.game.frames.ports[self.hero_port].leader.post.direction[frame].as_py())
     
     def villain_x_position(self, frame):
-        return self.game.frames.ports[self.villain_port].leader.pre.position.x[frame].as_py()
+        return float(self.game.frames.ports[self.villain_port].leader.pre.position.x[frame].as_py())
     
     def villain_y_position(self, frame):
-        return self.game.frames.ports[self.villain_port].leader.pre.position.y[frame].as_py()
+        return float(self.game.frames.ports[self.villain_port].leader.pre.position.y[frame].as_py())
     
     def villain_direction(self, frame):
-        return self.game.frames.ports[self.villain_port].leader.post.direction[frame].as_py()
+        return float(self.game.frames.ports[self.villain_port].leader.post.direction[frame].as_py())
     
     def hero_damage(self, frame):
         return self.game.frames.ports[self.hero_port].leader.post.percent[frame].as_py()

@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
+from lib.classes.ai_ml.chaingrab_ffnn import ChainGrabFFNN
 from lib.classes.ai_ml.model_loader import ModelLoader
 from lib.classes.file_io.console_logger import ConsoleProgress
 from lib.classes.nns.state_transition_preprocessor import StateTransitionPreprocessor
@@ -11,32 +12,29 @@ from lib.classes.ai_ml.transition_aware_ltsm import TransitionAwareLSTM
 
 
 class SmashBrosAnalyzer:
-    def __init__(self, rnn_units=64, feature_dim=802, max_memory_percent=0.2, epochs=1000, batch_size=256):
+    def __init__(self, hidden_units=64, feature_dim=802, max_memory_percent=0.2, epochs=1000, batch_size=256):
         torch.backends.cudnn.benchmark = True
         torch.backends.cudnn.enabled = True
         self.feature_dim = feature_dim
         self.epochs = epochs
         self.batch_size = batch_size
-        self.rnn_units = rnn_units
+        self.hidden_units = hidden_units
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         if torch.cuda.is_available():
-            # Limit GPU memory usage
             total_memory = torch.cuda.get_device_properties(0).total_memory
             torch.cuda.set_per_process_memory_fraction(max_memory_percent)
             torch.cuda.empty_cache()
 
-        
-        self.rnn_lstm_model = TransitionAwareLSTM(
+        self.model = ChainGrabFFNN(
             input_dim=feature_dim,
-            hidden_dim=rnn_units,
+            hidden_dim=hidden_units,
             output_dim=self._get_action_dim()
         ).to(self.device)
 
         self.scaler = torch.amp.GradScaler('cuda')
-        
         self.optimizer = optim.AdamW(
-            self.rnn_lstm_model.parameters(),
+            self.model.parameters(),
             lr=0.001,
             betas=(0.9, 0.999)
         )
@@ -47,7 +45,7 @@ class SmashBrosAnalyzer:
         self.loader = ModelLoader("./training_models/my_model")
 
     def load_model(self, input):
-        self.loader.load_model(input)
+        return self.loader.load_model(input)
         
     def train_models(self, processed_data):
         (X, y, durations) = processed_data
@@ -60,9 +58,7 @@ class SmashBrosAnalyzer:
             self.optimizer,
             max_lr=0.01,
             epochs=self.epochs,
-            steps_per_epoch=total_batches,
-            pct_start=0.3,
-            anneal_strategy='cos'
+            steps_per_epoch=total_batches
         )
 
         # set up logger
@@ -77,21 +73,18 @@ class SmashBrosAnalyzer:
 
         for epoch in range(self.epochs):
             for batch_idx in range(total_batches):
-                # Calculate batch indices
                 start_idx = batch_idx * self.batch_size
                 end_idx = min(start_idx + self.batch_size, len(X))
                 
-                # Load single batch to GPU
                 batch_X = self.get_chunk_float(X, start_idx, end_idx)
                 batch_y = self.get_chunk_long(y, start_idx, end_idx)
-                batch_durations = self.get_chunk_float(durations, start_idx, end_idx)
 
                 try:
                     self.optimizer.zero_grad(set_to_none=True)
 
                     # Forward pass with mixed precision
                     with torch.amp.autocast('cuda'):
-                        output = self.rnn_lstm_model(batch_X, batch_durations)
+                        output = self.model(batch_X)
                         loss = self.criterion(output, batch_y)
                     
                     # Backward pass
@@ -105,11 +98,11 @@ class SmashBrosAnalyzer:
 
                 finally:
                     # clean up
-                    del batch_X, batch_y, batch_durations, output, loss
+                    del batch_X, batch_y, output, loss
                     torch.cuda.empty_cache()
 
         # save
-        self.loader.save_model(self.rnn_lstm_model.state_dict(), self.optimizer.state_dict(), self.feature_dim, self.rnn_units)
+        self.loader.save_model(self.model.state_dict(), self.optimizer.state_dict(), self.feature_dim, self.hidden_units)
 
     
     def suggest_next_action(self, game_state, current_duration):

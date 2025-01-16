@@ -52,10 +52,10 @@ def _frame_to_vector(game: Replay, index: int, port: int) -> np.ndarray:
     stage_id=game.stage()
 
     # normalize position is biggest bottleneck
-    p1_pos = _normalize_position((_to_float(game.hero_x_position(index)), _to_float(game.hero_y_position(index))), stage_id)
-    p2_pos = _normalize_position((_to_float(game.villain_x_position(index)), _to_float(game.villain_y_position(index))), stage_id)
-    p1_direction=_to_float(game.hero_direction(index))
-    p2_direction=_to_float(game.villain_direction(index))
+    p1_pos = _normalize_position((game.hero_x_position(index), game.hero_y_position(index)), stage_id)
+    p2_pos = _normalize_position((game.villain_x_position(index), game.villain_y_position(index)), stage_id)
+    p1_direction = game.hero_direction(index)
+    p2_direction = game.villain_direction(index)
 
     frame_index=_to_int(index)
 
@@ -68,18 +68,18 @@ def _frame_to_vector(game: Replay, index: int, port: int) -> np.ndarray:
     #     p1_stocks=_to_int(p1_post.stocks[index]),
 
     vector_components = [
-        *p1_pos,
-        *p2_pos,
-        *(p1_pos - p2_pos),
-        np.array([_to_float(game.hero_damage(index)) / 999.0])[port],
-        np.array([_to_float(game.villain_damage(index)) / 999.0])[port],
+        # *p1_pos,
+        # *p2_pos,
+        # *(p1_pos - p2_pos),
+        # np.array([_to_float(game.hero_damage(index)) / 300.0])[port],
+        np.array([_to_float(game.villain_damage(index)) / 300.0])[port],
         *_one_hot_encode(game.hero_state_index(index), num_actions=ACTION_STATE_COUNT),
         *_one_hot_encode(game.villain_state_index(index), num_actions=ACTION_STATE_COUNT),
         # state.p1_inputs,
-        np.sin(p1_direction * np.pi),
-        np.cos(p1_direction * np.pi),
-        np.sin(p2_direction * np.pi),
-        np.cos(p2_direction * np.pi)
+        # np.sin(p1_direction * np.pi),
+        # np.cos(p1_direction * np.pi),
+        # np.sin(p2_direction * np.pi),
+        # np.cos(p2_direction * np.pi)
         # Add more relevant features as needed
     ]
 
